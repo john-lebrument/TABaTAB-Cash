@@ -1,8 +1,19 @@
-# TABaTAB Cash — version 2.11
+# TABaTAB Cash — version 2.12
 
 Visionneuse et explorateur d’images Windows portable avec onglets, favoris, navigation plein écran et outils de retouche.
 
 **[Télécharger la dernière version Windows](https://github.com/john-lebrument/tabatab-cash/releases/latest)** · **[Historique des versions et nouveautés](CHANGELOG.md)**
+
+## Nouveautés 2.12
+
+- **Actualiser** : bouton à flèche circulaire placé près du chemin, en complément de F5. Recharge le dossier et conserve la sélection et le défilement.
+- **Renommage sans conflit** : si le nom choisi existe déjà, une boîte propose un nom libre incrémenté, modifiable avant validation. Exemple : `Photo 009` → `Photo 010`, ou `Photo` → `Photo 001`. Fonctionne dans la grille, en plein écran, en fenêtre flottante et pour les séries ; toutes les destinations d’une série sont vérifiées avant le renommage. Annuler conserve les fichiers.
+- **Chemin en blocs** : chaque dossier est un bloc cliquable. Cliquer dans l’espace libre juste après le dernier bloc permet de saisir un chemin ou de copier le chemin complet avec Ctrl+C. Alt+D et le bouton Chemin restent disponibles ; Échap revient aux blocs.
+- **Doublons croisés** : nouvel outil indépendant du bouton Doublons existant. Choisir un ou plusieurs dossiers dans le groupe A et un ou plusieurs dans le groupe B ; seuls les contenus identiques présents entre les deux groupes sont affichés. Comparaison exacte SHA-256 de tous les fichiers ordinaires, avec sous-dossiers par défaut (désactivables), sans suivre les liens et jonctions. Les dossiers qui se recoupent ne produisent pas de faux doublon d’un fichier avec lui-même.
+- Ouvrir **Doublons croisés…** depuis sa barre de boutons ou par clic droit sur un dossier de l’arborescence, des favoris ou de la grille (plusieurs dossiers sélectionnés possibles dans la grille). Le clic droit place le dossier dans A, reprend les autres choix mémorisés et ouvre l’outil ; cliquer ensuite sur **Rechercher les doublons**. La fenêtre reste ouverte pendant la navigation pour permettre le glisser-déposer.
+- Dans chaque groupe : ajout par **Parcourir…**, liste des **favoris** et glisser-déposer de dossiers depuis l’arborescence. Le dépôt ajoute uniquement un chemin, sans déplacer le dossier. Listes et option de sous-dossiers sont conservées localement entre les utilisations. Les dossiers momentanément inaccessibles restent mémorisés.
+- Résultats : ouvrir un fichier, l’afficher dans l’Explorateur, copier les chemins ou cocher des fichiers et cliquer sur **Mettre les fichiers cochés à la corbeille**, **sans confirmation supplémentaire**. Aucun fichier n’est coché automatiquement ; au moins un exemplaire doit rester dans chaque groupe. Les contenus sont revérifiés avant la mise à la corbeille ; si le contenu a changé ou si la corbeille est indisponible, le fichier est conservé. Recherche en arrière-plan, annulable, avec erreurs d’accès signalées.
+- La compilation actualise l’enregistrement Windows existant vers le nouvel exécutable portable, sans modifier les choix d’applications par défaut.
 
 ## Nouveautés 2.11
 

@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
 
 from src.ui.crop_overlay import CropOverlayItem
 from src.utils.file_ops import crop_image, trash_image, restore_last_deleted, rename_images
+from src.ui.rename_dialog import rename_with_suggestion
 from src.ui.blur_tool import BlurSelection, blurred_regions, save_blurs
 from src.utils.windows_integration import reveal_in_explorer
 from src.utils.image_search import search_similar_images
@@ -682,7 +683,9 @@ class FullscreenImageViewer(QWidget):
         if not accepted:
             return
         try:
-            changes = rename_images([path], name)
+            changes = rename_with_suggestion(self, [path], name, rename_images)
+            if changes is None:
+                return
             self.images_renamed.emit(changes)
             self.image_list[self.current_index] = changes[0][1]
             self.load_current_image()

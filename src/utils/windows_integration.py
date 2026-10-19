@@ -70,6 +70,20 @@ def register_default_viewer(executable):
     ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)
 
 
+def refresh_registered_viewer(executable):
+    """Refresh an existing registration without changing Windows UserChoice."""
+    if sys.platform != 'win32':
+        return False
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Classes\TABaTABCash.Image'):
+            pass
+    except FileNotFoundError:
+        return False
+    register_default_viewer(executable)
+    return True
+
+
 def configure_default_viewer(parent):
     from PyQt6.QtWidgets import QMessageBox
     try:

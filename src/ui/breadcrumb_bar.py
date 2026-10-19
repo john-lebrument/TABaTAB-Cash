@@ -1,5 +1,5 @@
 from pathlib import Path
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QEvent
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QStackedWidget, QLineEdit, QScrollArea, QToolButton, QMenu, QLabel, QSizePolicy
 
@@ -30,6 +30,8 @@ class BreadcrumbBar(QWidget):
         self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.scroll.setFixedHeight(34)
         self.crumbs = QWidget()
+        self.crumbs.installEventFilter(self)
+        self.scroll.viewport().installEventFilter(self)
         self.crumb_layout = QHBoxLayout(self.crumbs)
         self.crumb_layout.setContentsMargins(2, 0, 2, 0)
         self.crumb_layout.setSpacing(2)
@@ -71,6 +73,9 @@ class BreadcrumbBar(QWidget):
             button = QToolButton(self.crumbs)
             button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
             button.setText(ancestor.name or ancestor.anchor)
+            button.setObjectName('pathBlock')
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setStyleSheet('QToolButton#pathBlock { border: 1px solid #718096; border-radius: 4px; padding: 3px 8px; background: rgba(110, 130, 150, 0.18); } QToolButton#pathBlock:hover { background: rgba(60, 140, 220, 0.35); border-color: #4c9ee8; }')
             button.ensurePolished()
             button.setFixedWidth(button.fontMetrics().horizontalAdvance(button.text()) + 24)
             button.setToolTip(value)
@@ -93,9 +98,18 @@ class BreadcrumbBar(QWidget):
             self.scroll.ensureWidgetVisible(self.buttons[-1])
 
     def start_edit(self):
+        self.edit.setText(self.path)
         self.stack.setCurrentWidget(self.edit)
         self.edit.setFocus()
         self.edit.selectAll()
+
+    def eventFilter(self, watched, event):
+        if (watched in (self.crumbs, self.scroll.viewport())
+                and event.type() == QEvent.Type.MouseButtonPress
+                and event.button() == Qt.MouseButton.LeftButton):
+            self.start_edit()
+            return True
+        return super().eventFilter(watched, event)
 
     def finish_edit(self):
         self.edit.setText(self.path)

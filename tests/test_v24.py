@@ -19,7 +19,7 @@ class FeaturesV24(unittest.TestCase):
     tearDown = test_v14.NewBehaviors.tearDown
     viewer = test_v14.NewBehaviors.viewer
 
-    def test_image_f2_keeps_extension_and_rejects_collision(self):
+    def test_image_f2_keeps_extension_and_proposes_free_name_on_collision(self):
         self.grid.select_path(self.paths[0])
         with patch.object(QInputDialog, 'getText', return_value=('Photo', True)):
             QTest.keyClick(self.grid, Qt.Key.Key_F2)
@@ -27,10 +27,11 @@ class FeaturesV24(unittest.TestCase):
         self.assertTrue(target.is_file())
         self.assertFalse(Path(self.paths[0]).exists())
         self.assertEqual(self.grid.get_selected_file_paths(), [str(target)])
-        with patch.object(QInputDialog, 'getText', return_value=('1', True)), patch.object(QMessageBox, 'warning') as warning:
+        with patch.object(QInputDialog, 'getText', side_effect=[('1', True), ('3', True)]) as prompt:
             QTest.keyClick(self.grid, Qt.Key.Key_F2)
-        warning.assert_called_once()
-        self.assertTrue(target.is_file())
+        self.assertEqual(prompt.call_args.kwargs['text'], '3')
+        self.assertFalse(target.exists())
+        self.assertTrue((self.root / '3.png').is_file())
         self.assertTrue(Path(self.paths[1]).is_file())
 
     def test_tree_f2_remaps_tabs_favorites_and_history(self):

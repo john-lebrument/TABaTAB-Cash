@@ -1,5 +1,15 @@
 # Historique des versions
 
+## 2.12
+
+- Bouton d’actualisation à icône native de flèche circulaire, près du chemin ; F5 et conservation de la sélection / du défilement.
+- Renommage : proposition modifiable d’un nom libre incrémenté lors d’un conflit, dans la grille et les visionneuses ; vérification de toute la série avant de renommer, annulation possible sans modification.
+- Barre de chemin : blocs visibles pour chaque dossier et édition du chemin par clic dans l’espace libre après le dernier dossier, avec sélection complète pour copier.
+- Nouvel outil « Doublons croisés » : comparaison exacte SHA-256 entre deux groupes de dossiers indépendants, sous-dossiers optionnels, recherche en arrière-plan annulable, gestion des erreurs et des chemins imbriqués. L’outil Doublons du dossier courant est inchangé.
+- Accès direct ou par clic droit sur dossiers / favoris ; ouverture sans lancement automatique. Ajout de dossiers par favoris, Parcourir ou glisser-déposer sans transfert ; mémorisation locale des groupes et de la récursivité.
+- Résultats groupés avec sélection manuelle, ouverture, Explorateur et copie des chemins. Mise à la corbeille des fichiers cochés sans confirmation supplémentaire, avec conservation obligatoire d’un exemplaire, revérification des contenus et refus de suppression définitive si la corbeille échoue.
+- Compilation portable : actualisation de l’enregistrement Windows existant vers l’exécutable publié, sans toucher à UserChoice. Archive GitHub sans préférences personnelles.
+
 ## 2.11
 
 - Correction de Google Lens : l’envoi multipart de l’aperçu JPEG est effectué dans le navigateur par défaut, afin de conserver sa session. Le transfert de la seule URL de résultats depuis Python provoquait « Recherche visuelle expirée » en 2.10.

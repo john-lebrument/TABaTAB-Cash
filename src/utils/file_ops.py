@@ -257,8 +257,8 @@ def convert_image_format(
     return dest
 
 
-def rename_images(paths, first_name):
-    """Rename in supplied display order, preserving extensions and existing files."""
+def plan_image_rename(paths, first_name):
+    """Validate every destination before touching any source."""
     sources = [Path(p) for p in paths]
     name = first_name.strip()
     if not name or name.endswith('.') or re.search(r'[<>:"/\\|?*\x00-\x1f]', name):
@@ -280,6 +280,26 @@ def rename_images(paths, first_name):
         if destination.exists() and destination != source:
             raise FileExistsError(f'Le fichier « {destination.name} » existe déjà. Aucun fichier renommé.')
         plan.append((source, destination))
+    return plan
+
+
+def suggest_rename(paths, name):
+    """Find a free starting name, also validating a whole numbered batch."""
+    match = re.fullmatch(r'(.*?)(\d+)', name.strip())
+    counter = int(match[2]) + 1 if match else 1
+    while True:
+        candidate = (match[1] + str(counter).zfill(len(match[2]))
+                     if match else f'{name.strip()} {counter:03d}')
+        try:
+            plan_image_rename(paths, candidate)
+            return candidate
+        except FileExistsError:
+            counter += 1
+
+
+def rename_images(paths, first_name):
+    """Rename in supplied display order, preserving extensions and existing files."""
+    plan = plan_image_rename(paths, first_name)
     completed = []
     try:
         for source, destination in plan:

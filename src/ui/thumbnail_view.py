@@ -39,6 +39,7 @@ from PyQt6.QtWidgets import (
 from src.utils.file_ops import is_image_file, move_file, copy_file, convert_image_format, trash_image, restore_last_deleted
 from src.utils.image_loader import ThumbnailManager
 from src.utils.file_ops import rename_images, rename_folder, rotate_image_file
+from src.ui.rename_dialog import rename_with_suggestion
 from src.ui.drag_feedback import drop_action, paint_destination, set_large_drag_cursors
 from src.ui.folder_actions import create_folder, delete_folders
 from src.utils.file_ops import is_video_file, is_media_file, is_browser_file
@@ -84,6 +85,7 @@ class ThumbnailView(QListWidget):
     clipboard_image_saved = pyqtSignal(str)
     images_renamed = pyqtSignal(list)
     folder_renamed = pyqtSignal(str, str)
+    cross_duplicates_requested = pyqtSignal(list)
     folder_created = pyqtSignal(str)
     folder_deleted = pyqtSignal(str)
     images_converted = pyqtSignal(list)
@@ -685,7 +687,9 @@ class ThumbnailView(QListWidget):
         if not accepted:
             return
         try:
-            changes = rename_images(paths, name)
+            changes = rename_with_suggestion(self, paths, name, rename_images)
+            if changes is None:
+                return
             self.images_renamed.emit(changes)
             self.setFolder(self.current_folder)
             selected = {new for old, new in changes}
@@ -812,6 +816,9 @@ class ThumbnailView(QListWidget):
             menu.addAction('Couper (Ctrl+X)').triggered.connect(self.cut_selected)
             menu.addAction('Renommer (F2)').triggered.connect(self._rename_selected)
         if is_folder:
+            menu.addAction('Doublons croisés…').triggered.connect(
+                lambda: self.cross_duplicates_requested.emit(
+                    [i.data(ROLE_PATH) for i in self.selectedItems() if i.data(ROLE_IS_FOLDER)] or [file_path]))
             menu.addAction('Ouvrir dans l’explorateur').triggered.connect(lambda: open_folder_in_explorer(file_path))
             menu.addAction('Coller dans ce dossier (Ctrl+V)').triggered.connect(
                 lambda: self.paste_images(file_path))

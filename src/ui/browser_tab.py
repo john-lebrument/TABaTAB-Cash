@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
     QColorDialog,
     QDialog,
     QScrollArea,
+    QStyle,
 )
 
 from src.ui.thumbnail_view import ThumbnailView
@@ -38,6 +39,7 @@ from src.utils.duplicates import DuplicateScan, recycle_duplicates
 from src.utils.image_loader import ThumbnailManager
 from src.ui.drag_feedback import drop_action, paint_destination, set_large_drag_cursors
 from src.ui.breadcrumb_bar import BreadcrumbBar
+from src.ui.cross_duplicates_dialog import CrossDuplicatesDialog
 from src.ui.folder_actions import create_folder, delete_folders
 from src.utils.file_ops import rename_folder
 from src.utils.favorites import export_favorites, import_favorites
@@ -467,6 +469,7 @@ class BrowserTabWidget(QWidget):
         self._poll_timer.timeout.connect(self._refresh_visible)
         self._poll_timer.start()
         self._duplicate_scan = None
+        self._cross_dialog = None
 
         self._init_ui()
         self.navigate_to(self.current_folder, add_history=False)
@@ -516,11 +519,15 @@ class BrowserTabWidget(QWidget):
         self.btn_browse.clicked.connect(self.browse_folder)
         nav_bar.addWidget(self.btn_browse)
 
-        self.btn_refresh = QPushButton("🔄", self)
+        self.btn_refresh = QPushButton(self)
+        self.btn_refresh.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_BrowserReload))
+        self.btn_refresh.setIconSize(QSize(22, 22))
         self.btn_refresh.setToolTip("Actualiser (F5)")
         self.btn_refresh.setFixedWidth(32)
-        self.btn_refresh.clicked.connect(self.refresh)
-        nav_bar.addWidget(self.btn_refresh)
+        self.btn_refresh.setAccessibleName('Actualiser le dossier')
+        self.btn_refresh.setStyleSheet('padding: 3px;')
+        self.btn_refresh.clicked.connect(lambda: self.refresh())
+        nav_bar.insertWidget(nav_bar.indexOf(self.breadcrumb), self.btn_refresh)
 
         # 2. Thumbnail Size Controls (Presets up to 600px + Slider + Label)
         nav_bar.addSpacing(8)
@@ -602,6 +609,10 @@ class BrowserTabWidget(QWidget):
         self.btn_duplicates.setToolTip('Rechercher les fichiers de contenu identique dans ce dossier uniquement')
         self.btn_duplicates.clicked.connect(self._find_duplicates)
         sort_bar.addWidget(self.btn_duplicates)
+        self.btn_cross_duplicates = QPushButton('Doublons croisés…', self)
+        self.btn_cross_duplicates.setToolTip('Comparer un ou plusieurs dossiers avec d’autres dossiers')
+        self.btn_cross_duplicates.clicked.connect(lambda: self._open_cross_duplicates())
+        sort_bar.addWidget(self.btn_cross_duplicates)
         sort_bar.addStretch()
         hint = QLabel('Ctrl+C : copier  ·  dossier + Ctrl+V : coller dedans  ·  Ctrl+glisser : copier', self)
         hint.setWordWrap(True)
@@ -688,6 +699,7 @@ class BrowserTabWidget(QWidget):
 
         # Right: Thumbnail Grid
         self.thumb_view = ThumbnailView(self.thumbnail_manager, self.splitter)
+        self.thumb_view.cross_duplicates_requested.connect(self._open_cross_duplicates)
         self.thumb_view.history_back_requested.connect(self.go_back)
         self.thumb_view.history_forward_requested.connect(self.go_forward)
         self.thumb_view.favorites_provider = self._favorite_destinations
@@ -727,6 +739,23 @@ class BrowserTabWidget(QWidget):
         self.thumb_view.show_zips = visible
         self.refresh()
         if self.config: self.config.set('show_zips', visible)
+
+    def _open_cross_duplicates(self, folders=None):
+        if self._cross_dialog and (self._cross_dialog.isVisible() or self._cross_dialog.scan):
+            dialog = self._cross_dialog
+        else:
+            if self._cross_dialog:
+                self._cross_dialog.deleteLater()
+            favorites = [(self.fav_list.item(i).text(), self.fav_list.item(i).data(ROLE_PATH))
+                         for i in range(self.fav_list.count())]
+            dialog = CrossDuplicatesDialog(self.config, favorites, self)
+            dialog.files_recycled.connect(lambda: self.refresh())
+            self._cross_dialog = dialog
+        if folders and not dialog.scan:
+            dialog.use_context_folders(folders)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
 
     def _find_duplicates(self):
         if self._duplicate_scan is not None: return
@@ -817,6 +846,7 @@ class BrowserTabWidget(QWidget):
         menu = QMenu(self)
         menu.addAction('Nouveau dossier…').triggered.connect(lambda: self._create_tree_folder(path))
         if index.isValid():
+            menu.addAction('Doublons croisés…').triggered.connect(lambda: self._open_cross_duplicates([path]))
             menu.addAction('Ouvrir dans l’explorateur').triggered.connect(lambda: open_folder_in_explorer(path))
             colors = menu.addMenu('Couleur du dossier')
             for label, color in [('Rouge vif', '#ff1744'), ('Orange vif', '#ff9100'),
@@ -981,6 +1011,7 @@ class BrowserTabWidget(QWidget):
 
         act_new_tab = menu.addAction("➕ Ouvrir dans un nouvel onglet")
         act_new_tab.triggered.connect(lambda: self.open_in_new_tab_requested.emit(path))
+        menu.addAction('Doublons croisés…').triggered.connect(lambda: self._open_cross_duplicates([path]))
 
         copy = menu.addAction('Copier les images sélectionnées dans ce dossier')
         copy.setEnabled(bool(self.thumb_view.get_selected_file_paths()))

@@ -79,6 +79,8 @@ def build(publish=True, include_settings=True):
         (root / name).write_text('@echo off\ncd /d "%~dp0"\nstart "" "' + target.name + '\\TABaTAB Cash.exe" %*\n', encoding='utf-8')
     if publish:
         published = publish_latest(target)
+        from src.utils.windows_integration import refresh_registered_viewer
+        refresh_registered_viewer(published / 'TABaTAB Cash.exe')
         print(f'Dernière version : {published}', flush=True)
     return target
 
