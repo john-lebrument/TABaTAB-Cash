@@ -1,5 +1,5 @@
 from pathlib import Path
-from PyQt6.QtCore import Qt, QPoint, QRectF, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QPoint, QRectF, QTimer, QEvent, pyqtSignal
 from PyQt6.QtGui import (
     QColor,
     QFont,
@@ -35,6 +35,7 @@ from src.ui.crop_overlay import CropOverlayItem
 from src.utils.file_ops import crop_image, trash_image, restore_last_deleted, rename_images
 from src.ui.rename_dialog import rename_with_suggestion
 from src.ui.blur_tool import BlurSelection, blurred_regions, save_blurs
+from src.ui.metadata_panel import MetadataPanel
 from src.utils.windows_integration import reveal_in_explorer
 from src.utils.image_search import search_similar_images
 from PIL import Image, ImageOps
@@ -70,6 +71,15 @@ class FloatingCloseButton(QPushButton):
         painter.setPen(QPen(QColor('#ff4040'), 2.5))
         painter.drawLine(7, 6, self.width() - 7, self.height() - 6)
         painter.drawLine(self.width() - 7, 6, 7, self.height() - 6)
+        painter.end()
+
+
+class FloatingMinimizeButton(QPushButton):
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor('black'))
+        painter.setPen(QPen(QColor('white'), 2))
+        painter.drawLine(6, self.height() // 2, self.width() - 6, self.height() // 2)
         painter.end()
 
 
@@ -215,7 +225,12 @@ class FullscreenImageViewer(QWidget):
     navigate_requested = pyqtSignal(int)  # -1 for prev, +1 for next
 
     def __init__(self, parent=None, floating=False):
-        super().__init__(parent, Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+        # An owned Windows window is minimized along with its owner. Floating
+        # images are independent top-level windows, retained by MainWindow's set.
+        flags = Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
+        if floating:
+            flags |= Qt.WindowType.WindowMinimizeButtonHint
+        super().__init__(None if floating else parent, flags)
         self.floating = floating
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, floating)
         if floating:
@@ -263,6 +278,10 @@ class FullscreenImageViewer(QWidget):
         self.view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.view.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.view.setMouseTracking(True)
+        self.view.viewport().setMouseTracking(True)
+        self.view.viewport().installEventFilter(self)
+        self.metadata_panel = None if self.floating else MetadataPanel(self)
 
         layout.addWidget(self.view)
 
@@ -430,7 +449,9 @@ class FullscreenImageViewer(QWidget):
 
         self.blur_panel = QWidget(self)
         self.blur_panel.setStyleSheet('QWidget { background: #252525; color: white; } QPushButton { padding: 8px; }')
-        blur_layout = QHBoxLayout(self.blur_panel)
+        blur_outer = QVBoxLayout(self.blur_panel)
+        blur_layout = QHBoxLayout()
+        blur_outer.addLayout(blur_layout)
         blur_layout.addWidget(QLabel('Flou :', self.blur_panel))
         self.blur_slider = QSlider(Qt.Orientation.Horizontal, self.blur_panel)
         self.blur_slider.setRange(0, 100)
@@ -443,6 +464,13 @@ class FullscreenImageViewer(QWidget):
         blur_layout.addWidget(self.blur_value)
         self.blur_count = QLabel('0 zone', self.blur_panel)
         blur_layout.addWidget(self.blur_count)
+        self.btn_blur_transform = QPushButton('Transformer (Ctrl+T)', self.blur_panel)
+        self.btn_blur_transform.setCheckable(True)
+        self.btn_blur_transform.setToolTip('Cliquer dans une zone pour la sélectionner et la déplacer.\nCtrl+T : huit poignées pour modifier sa largeur et sa hauteur.\nDessiner ailleurs pour ajouter une autre zone.')
+        self.btn_blur_transform.toggled.connect(self.set_blur_transform)
+        blur_layout.addWidget(self.btn_blur_transform)
+        blur_layout = QHBoxLayout()
+        blur_outer.addLayout(blur_layout)
         undo_blur_button = QPushButton('Effacer la dernière zone', self.blur_panel)
         undo_blur_button.clicked.connect(self._remove_last_blur)
         blur_layout.addWidget(undo_blur_button)
@@ -452,6 +480,9 @@ class FullscreenImageViewer(QWidget):
         cancel_blur_button = QPushButton('Annuler', self.blur_panel)
         cancel_blur_button.clicked.connect(self.cancel_blur)
         blur_layout.addWidget(cancel_blur_button)
+        hint = QLabel('Glisser dans une zone : déplacer · Dessiner ailleurs : ajouter · Ctrl+T : transformer', self.blur_panel)
+        hint.setWordWrap(True)
+        blur_outer.addWidget(hint)
         self.blur_panel.hide()
 
         self.crop_panel = QWidget(self)
@@ -511,6 +542,13 @@ class FullscreenImageViewer(QWidget):
             self.floating_close.setStyleSheet('color: #ff4040; background: black; border: none; font-size: 20px; font-weight: bold;')
             self.floating_close.clicked.connect(self.close_fullscreen)
             self.floating_close.hide()
+            self.floating_minimize = FloatingMinimizeButton('−', self)
+            self.floating_minimize.setToolTip('Réduire cette image')
+            self.floating_minimize.setAccessibleName('Réduire cette image')
+            self.floating_minimize.setFixedSize(24, 22)
+            self.floating_minimize.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            self.floating_minimize.clicked.connect(self.showMinimized)
+            self.floating_minimize.hide()
 
     def move_to_screen(self, screen):
         if screen is None:
@@ -546,10 +584,13 @@ class FullscreenImageViewer(QWidget):
             self.current_index = 0
 
         if self.floating:
+            if screen is not None:
+                self.winId()
+                self.windowHandle().setScreen(screen)
             self.load_current_image()
             if self.current_pixmap and not self.current_pixmap.isNull():
                 available = self.screen().availableGeometry()
-                factor = min(1, available.width() / self.current_pixmap.width(), available.height() / self.current_pixmap.height())
+                factor = min(1 / self.view.viewport().devicePixelRatioF(), available.width() / self.current_pixmap.width(), available.height() / self.current_pixmap.height())
                 self.resize(round(self.current_pixmap.width() * factor), round(self.current_pixmap.height() * factor))
                 self.move(available.center() - self.rect().center())
             self.show()
@@ -569,6 +610,8 @@ class FullscreenImageViewer(QWidget):
             return
 
         file_path = self.image_list[self.current_index]
+        if self.metadata_panel:
+            self.metadata_panel.reset()
         self.cancel_blur()
         self.cancel_crop()
         self.hud.hide()
@@ -592,6 +635,9 @@ class FullscreenImageViewer(QWidget):
             reader.setAutoTransform(True)
             image = reader.read()
         self.current_pixmap = QPixmap.fromImage(image) if image is not None else QPixmap()
+        # A photograph named @2x is still an image at its encoded pixel size,
+        # not a high-DPI UI asset with an implicit half-size bounding rectangle.
+        self.current_pixmap.setDevicePixelRatio(1.0)
         if self.current_pixmap.isNull():
             return
 
@@ -637,33 +683,37 @@ class FullscreenImageViewer(QWidget):
 
         scale_x = view_rect.width() / scene_rect.width()
         scale_y = view_rect.height() / scene_rect.height()
-        factor = min(scale_x, scale_y)
+        # One source pixel occupies at most one physical display pixel initially.
+        factor = min(1 / self.view.viewport().devicePixelRatioF(), scale_x, scale_y)
 
         self.view.scale(factor, factor)
         self.zoom_factor = factor
         self.fit_zoom_factor = factor
+        self.view.centerOn(scene_rect.center())
         self._update_zoom_label()
 
     def zoom_in(self):
-        self._apply_zoom(1.25)
+        self._apply_zoom(1.25 ** (0.5 if self.floating else 1))
 
     def zoom_out(self):
-        self._apply_zoom(0.8)
+        self._apply_zoom(0.8 ** (0.5 if self.floating else 1))
 
     def _apply_zoom(self, factor: float):
         if not self.current_pixmap:
             return
         new_factor = self.zoom_factor * factor
-        # Zoom is relative to the image fitted to the screen (100%).
-        if 0.02 <= new_factor / self.fit_zoom_factor <= 30.0:
+        if 0.000001 <= new_factor * self.view.viewport().devicePixelRatioF() <= 30.0:
             self.view.scale(factor, factor)
             self.zoom_factor = new_factor
             self._update_zoom_label()
 
     def _update_zoom_label(self):
-        pct = round(self.zoom_factor / self.fit_zoom_factor * 100)
-        self.lbl_zoom.setText(f"{pct} %")
-        self.zoom_badge.setText(f"{pct} %")
+        pct = self.zoom_factor * self.view.viewport().devicePixelRatioF() * 100
+        value = f'{pct:.3g}' if pct < 10 else str(round(pct))
+        dimensions = f' · {self.current_pixmap.width()} × {self.current_pixmap.height()} px' if self.current_pixmap else ''
+        text = f'{value} %{dimensions}'
+        self.lbl_zoom.setText(text)
+        self.zoom_badge.setText(text)
         self._position_zoom_badge()
         self.zoom_badge.setVisible(not self.floating)
         self.zoom_badge.raise_()
@@ -852,6 +902,14 @@ class FullscreenImageViewer(QWidget):
         self._update_blur_preview()
         self.view.setFocus()
 
+    def set_blur_transform(self, enabled):
+        if self.blur_item:
+            self.blur_item.set_transform_mode(enabled)
+        self.btn_blur_transform.blockSignals(True)
+        self.btn_blur_transform.setChecked(bool(enabled))
+        self.btn_blur_transform.blockSignals(False)
+        self.view.setFocus()
+
     def _blur_selection_changed(self):
         self.blur_timer.start()
         if self.blur_item:
@@ -876,6 +934,7 @@ class FullscreenImageViewer(QWidget):
 
     def cancel_blur(self):
         self.blur_timer.stop()
+        self.set_blur_transform(False)
         if self.blur_item is not None:
             self.scene.removeItem(self.blur_item)
             self.blur_item = None
@@ -1119,6 +1178,14 @@ class FullscreenImageViewer(QWidget):
             self.start_blur()
             return
         if self.blur_item:
+            if key == Qt.Key.Key_T and event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                if not event.isAutoRepeat():
+                    self.set_blur_transform(not self.blur_item.transform_mode)
+                event.accept()
+                return
+            if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Escape) and self.blur_item.transform_mode:
+                self.set_blur_transform(False)
+                return
             if key == Qt.Key.Key_Escape:
                 self.cancel_blur()
                 return
@@ -1161,6 +1228,9 @@ class FullscreenImageViewer(QWidget):
                 return
 
         # General shortcuts
+        if key == Qt.Key.Key_Escape and self.metadata_panel and self.metadata_panel.isVisible():
+            self.metadata_panel.hide()
+            return
         if key == Qt.Key.Key_Escape:
             self.close_fullscreen()
         elif key in (Qt.Key.Key_Plus, Qt.Key.Key_Equal):
@@ -1213,24 +1283,43 @@ class FullscreenImageViewer(QWidget):
     def mouseMoveEvent(self, event: QMouseEvent):
         super().mouseMoveEvent(event)
 
+    def eventFilter(self, watched, event):
+        panel = getattr(self, 'metadata_panel', None)
+        if panel and watched is self.view.viewport() and event.type() == QEvent.Type.MouseMove:
+            point = self.view.viewport().mapTo(self, event.position().toPoint())
+            if not event.buttons():
+                if panel.isVisible() and point.x() < panel.x():
+                    panel.hide()
+                    self.view.setFocus()
+                elif point.x() >= self.width() - 8 and 0 <= self.current_index < len(self.image_list):
+                    panel.load(self.image_list[self.current_index])
+                    panel.show()
+                    panel.raise_()
+        return super().eventFilter(watched, event)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._position_hud()
         self._position_zoom_badge()
-        if self.floating and self.current_pixmap:
-            self.fit_to_screen()
+        if self.current_pixmap:
+            if self.floating:
+                self._update_zoom_label()
+            else:
+                self.fit_to_screen()
 
     def enterEvent(self, event):
         super().enterEvent(event)
         if self.floating:
-            for control in (self.floating_close, self.move_handle, self.size_grip):
+            for control in (self.floating_close, self.floating_minimize, self.move_handle, self.size_grip):
                 control.show()
                 control.raise_()
 
     def leaveEvent(self, event):
         super().leaveEvent(event)
+        if self.metadata_panel:
+            self.metadata_panel.hide()
         if self.floating:
-            for control in (self.floating_close, self.move_handle, self.size_grip):
+            for control in (self.floating_close, self.floating_minimize, self.move_handle, self.size_grip):
                 control.hide()
             self.hud.hide()
 
@@ -1242,6 +1331,9 @@ class FullscreenImageViewer(QWidget):
         x = (self.width() - hud_w) // 2
         y = self.height() - hud_h - 24
         self.hud.setGeometry(x, y, hud_w, hud_h)
+        if self.metadata_panel:
+            self.metadata_panel.setGeometry(self.width() - min(520, max(280, self.width() // 3)), 0,
+                                            min(520, max(280, self.width() // 3)), self.height())
         if hasattr(self, 'blur_panel'):
             self.blur_panel.adjustSize()
             self.blur_panel.move(max(0, (self.width() - self.blur_panel.width()) // 2), self.height() - self.blur_panel.height() - 20)
@@ -1250,8 +1342,10 @@ class FullscreenImageViewer(QWidget):
             self.size_grip.raise_()
             self.move_handle.move(max(0, (self.width() - 26) // 2), 4)
             self.floating_close.move(self.width() - 28, 4)
+            self.floating_minimize.move(self.width() - 54, 4)
             self.move_handle.raise_()
             self.floating_close.raise_()
+            self.floating_minimize.raise_()
         if hasattr(self, 'crop_panel'):
             panel_w = min(self.width() - 32, self.crop_panel.sizeHint().width())
             panel_h = self.crop_panel.sizeHint().height()
@@ -1266,6 +1360,7 @@ class FullscreenImageViewer(QWidget):
             # Keep every control accessible in small borderless image windows.
             from PyQt6.QtWidgets import QMenu
             menu = QMenu(self)
+            menu.addAction(self.lbl_zoom.text()).setEnabled(False)
             menu.addAction('Images similaires sur Yandex et Google Lens (S)').triggered.connect(self.search_current_image)
             menu.addAction("Afficher dans l'explorateur Windows").triggered.connect(self.reveal_current_image)
             for label, action in [('Précédente ←', self.prev_image), ('Suivante →', self.next_image),

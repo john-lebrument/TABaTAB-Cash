@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
 from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPen
+from PyQt6.QtGui import QColor, QPen, QPainterPath
 from PyQt6.QtWidgets import QGraphicsObject
 
 from src.utils.file_ops import get_unique_destination_path
@@ -72,6 +72,10 @@ class BlurSelection(QGraphicsObject):
         self._active = QRectF()
         self._origin = QPointF()
         self._drawing = False
+        self.selected_index = -1
+        self.transform_mode = False
+        self._drag_kind = None
+        self._start_rect = QRectF()
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
         self.setAcceptHoverEvents(True)
         self.setCursor(Qt.CursorShape.CrossCursor)
@@ -84,29 +88,100 @@ class BlurSelection(QGraphicsObject):
         return QPointF(max(self.bounds.left(), min(self.bounds.right(), point.x())),
                        max(self.bounds.top(), min(self.bounds.bottom(), point.y())))
 
-    def mousePressEvent(self, event):
-        self._origin = self._bounded(event.pos())
-        self._active = QRectF(self._origin, self._origin)
-        self._drawing = True
+    def _scale(self):
+        views = self.scene().views() if self.scene() else []
+        return max(.001, abs(views[0].transform().m11())) if views else 1.0
+
+    def get_handle_rects(self):
+        if not self.transform_mode or not 0 <= self.selected_index < len(self.rects):
+            return {}
+        r = self.rects[self.selected_index]
+        size = 10 / self._scale()
+        centers = {'nw': r.topLeft(), 'n': QPointF(r.center().x(), r.top()), 'ne': r.topRight(),
+                   'e': QPointF(r.right(), r.center().y()), 'se': r.bottomRight(),
+                   's': QPointF(r.center().x(), r.bottom()), 'sw': r.bottomLeft(),
+                   'w': QPointF(r.left(), r.center().y())}
+        return {key: QRectF(p.x() - size / 2, p.y() - size / 2, size, size) for key, p in centers.items()}
+
+    def _hit(self, point):
+        for handle, rect in self.get_handle_rects().items():
+            if rect.adjusted(-2 / self._scale(), -2 / self._scale(), 2 / self._scale(), 2 / self._scale()).contains(point):
+                return self.selected_index, handle
+        for index in reversed(range(len(self.rects))):
+            ellipse = QPainterPath()
+            ellipse.addEllipse(self.rects[index])
+            if ellipse.contains(point):
+                return index, 'move'
+        return -1, 'new'
+
+    def set_transform_mode(self, enabled):
+        self.transform_mode = bool(enabled)
+        if self.rects and not 0 <= self.selected_index < len(self.rects):
+            self.selected_index = len(self.rects) - 1
         self.update()
+
+    def hoverMoveEvent(self, event):
+        index, kind = self._hit(event.pos())
+        cursor = {'move': Qt.CursorShape.SizeAllCursor,
+                  'n': Qt.CursorShape.SizeVerCursor, 's': Qt.CursorShape.SizeVerCursor,
+                  'w': Qt.CursorShape.SizeHorCursor, 'e': Qt.CursorShape.SizeHorCursor,
+                  'nw': Qt.CursorShape.SizeFDiagCursor, 'se': Qt.CursorShape.SizeFDiagCursor,
+                  'ne': Qt.CursorShape.SizeBDiagCursor, 'sw': Qt.CursorShape.SizeBDiagCursor}
+        self.setCursor(cursor.get(kind, Qt.CursorShape.CrossCursor))
+        event.accept()
+
+    def begin_drag(self, point):
+        self._origin = self._bounded(point)
+        self.selected_index, self._drag_kind = self._hit(point)
+        self._drawing = self._drag_kind == 'new'
+        if self._drawing:
+            self._active = QRectF(self._origin, self._origin)
+        else:
+            self._start_rect = QRectF(self.rects[self.selected_index])
+        self.update()
+
+    def update_drag(self, point):
+        point = self._bounded(point)
+        if self._drawing:
+            self._active = QRectF(self._origin, point).normalized().intersected(self.bounds)
+        elif 0 <= self.selected_index < len(self.rects) and self._drag_kind:
+            r = QRectF(self._start_rect)
+            kind = self._drag_kind
+            if kind == 'move':
+                delta = point - self._origin
+                dx = max(self.bounds.left() - r.left(), min(self.bounds.right() - r.right(), delta.x()))
+                dy = max(self.bounds.top() - r.top(), min(self.bounds.bottom() - r.bottom(), delta.y()))
+                r.translate(dx, dy)
+            else:
+                if 'w' in kind: r.setLeft(min(point.x(), r.right() - 1))
+                if 'e' in kind: r.setRight(max(point.x(), r.left() + 1))
+                if 'n' in kind: r.setTop(min(point.y(), r.bottom() - 1))
+                if 's' in kind: r.setBottom(max(point.y(), r.top() + 1))
+            self.rects[self.selected_index] = r
+        self.update()
+        self.rect_changed.emit(QRectF(self._active))
+
+    def end_drag(self, point):
+        self.update_drag(point)
+        if self._drawing and self._active.width() >= 2 and self._active.height() >= 2:
+            self.rects.append(QRectF(self._active))
+            self.selected_index = len(self.rects) - 1
+        self._active = QRectF()
+        self._drawing = False
+        self._drag_kind = None
+        self.update()
+        self.rect_changed.emit(QRectF())
+
+    def mousePressEvent(self, event):
+        self.begin_drag(event.pos())
         event.accept()
 
     def mouseMoveEvent(self, event):
-        if self._drawing:
-            self._active = QRectF(self._origin, self._bounded(event.pos())).normalized().intersected(self.bounds)
-            self.update()
-            self.rect_changed.emit(QRectF(self._active))
+        self.update_drag(event.pos())
         event.accept()
 
     def mouseReleaseEvent(self, event):
-        if self._drawing:
-            self._active = QRectF(self._origin, self._bounded(event.pos())).normalized().intersected(self.bounds)
-            if self._active.width() >= 2 and self._active.height() >= 2:
-                self.rects.append(QRectF(self._active))
-            self._active = QRectF()
-            self._drawing = False
-            self.update()
-            self.rect_changed.emit(QRectF())
+        self.end_drag(event.pos())
         event.accept()
 
     def paint(self, painter, option, widget=None):
@@ -121,6 +196,13 @@ class BlurSelection(QGraphicsObject):
             pen.setStyle(Qt.PenStyle.DashLine)
             painter.setPen(pen)
             painter.drawEllipse(self._active)
+        if self.transform_mode and 0 <= self.selected_index < len(self.rects):
+            pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.drawRect(self.rects[self.selected_index])
+            painter.setBrush(QColor('white'))
+            for rect in self.get_handle_rects().values():
+                painter.drawRect(rect)
         painter.restore()
 
     def setRect(self, rect):
@@ -131,6 +213,7 @@ class BlurSelection(QGraphicsObject):
                 self.rects[-1] = normalized
             else:
                 self.rects.append(normalized)
+            self.selected_index = len(self.rects) - 1
             self.update()
             self.rect_changed.emit(QRectF(normalized))
 
@@ -138,6 +221,7 @@ class BlurSelection(QGraphicsObject):
         normalized = QRectF(rect).normalized().intersected(self.bounds)
         if normalized.width() >= 1 and normalized.height() >= 1:
             self.rects.append(normalized)
+            self.selected_index = len(self.rects) - 1
             self.update()
             self.rect_changed.emit(QRectF(normalized))
 
@@ -167,11 +251,13 @@ class BlurSelection(QGraphicsObject):
     def remove_last(self):
         if self.rects:
             self.rects.pop()
+            self.selected_index = min(self.selected_index, len(self.rects) - 1)
             self.update()
             self.rect_changed.emit(QRectF())
 
     def clear(self):
         self.rects.clear()
+        self.selected_index = -1
         self._active = QRectF()
         self.update()
         self.rect_changed.emit(QRectF())

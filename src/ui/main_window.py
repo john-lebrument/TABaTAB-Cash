@@ -528,7 +528,9 @@ class MainWindow(QMainWindow):
         viewer.image_deleted.connect(self._on_image_deleted)
         viewer.image_restored.connect(self._on_image_restored)
         viewer.floating_requested.connect(self._on_request_floating)
-        viewer.show_images(all_images, current_image)
+        source = self.sender()
+        screen = source.screen() if isinstance(source, QWidget) else self.screen()
+        viewer.show_images(all_images, current_image, screen=screen)
         viewer.raise_()
         viewer.activateWindow()
 

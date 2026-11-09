@@ -99,27 +99,27 @@ class FeaturesV24(unittest.TestCase):
         self.assertEqual(viewer.image_list[0], self.paths[0])
         self.assertTrue(Path(self.paths[0]).is_file())
 
-    def test_zoom_badge_visible_and_relative_to_fit(self):
+    def test_zoom_badge_visible_and_relative_to_source_pixels(self):
         viewer = self.viewer()
         self.assertTrue(viewer.zoom_badge.isVisible())
         self.assertFalse(viewer.hud.isVisible())
-        self.assertEqual(viewer.zoom_badge.text(), '100 %')
+        self.assertEqual(viewer.zoom_badge.text(), '100 % · 320 × 240 px')
         baseline = viewer.view.transform().m11()
         QTest.keyClick(viewer.view, Qt.Key.Key_Plus)
-        self.assertEqual(viewer.zoom_badge.text(), '125 %')
+        self.assertEqual(viewer.zoom_badge.text(), '125 % · 320 × 240 px')
         self.assertAlmostEqual(viewer.view.transform().m11(), baseline * 1.25)
         QTest.keyClick(viewer.view, Qt.Key.Key_Minus)
-        self.assertEqual(viewer.zoom_badge.text(), '100 %')
+        self.assertEqual(viewer.zoom_badge.text(), '100 % · 320 × 240 px')
         QTest.keyClick(viewer.view, Qt.Key.Key_Minus)
-        self.assertEqual(viewer.zoom_badge.text(), '80 %')
+        self.assertEqual(viewer.zoom_badge.text(), '80 % · 320 × 240 px')
         QTest.keyClick(viewer.view, Qt.Key.Key_0)
-        self.assertEqual(viewer.zoom_badge.text(), '100 %')
+        self.assertEqual(viewer.zoom_badge.text(), '100 % · 320 × 240 px')
         viewer.hud.show()
         viewer.hud.hide()
         self.assertTrue(viewer.zoom_badge.isVisible())
         viewer.next_image()
-        self.assertEqual(viewer.zoom_badge.text(), '100 %')
-        self.assertEqual(viewer.lbl_zoom.text(), '100 %')
+        self.assertEqual(viewer.zoom_badge.text(), '100 % · 320 × 240 px')
+        self.assertEqual(viewer.lbl_zoom.text(), '100 % · 320 × 240 px')
 
     def test_release_zip_excludes_personal_data_and_checksum_matches(self):
         bundle = self.root / 'Bundle'

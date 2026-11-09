@@ -1,8 +1,17 @@
-# TABaTAB Cash — version 2.12
+# TABaTAB Cash — version 2.13
 
 Visionneuse et explorateur d’images Windows portable avec onglets, favoris, navigation plein écran et outils de retouche.
 
 **[Télécharger la dernière version Windows](https://github.com/john-lebrument/tabatab-cash/releases/latest)** · **[Historique des versions et nouveautés](CHANGELOG.md)**
+
+## Nouveautés 2.13
+
+- **Flou déplaçable et transformable** : après F, dessiner une zone elliptique puis glisser dans son intérieur pour la déplacer. **Ctrl+T**, ou le bouton Transformer, affiche huit poignées sur la zone sélectionnée pour modifier sa largeur et sa hauteur. Cliquer dans une autre zone la sélectionne ; dessiner en dehors des zones en ajoute une autre. Les zones restent dans l’image et l’aperçu se recalcule à chaque déplacement / transformation.
+- **Plusieurs flous** : les zones restent indépendantes et sont enregistrées ensemble. Entrée ou Échap quitte d’abord les poignées de transformation, en conservant les zones ; une nouvelle pression sur Entrée propose l’enregistrement du flou, Échap annule l’outil. Le panneau rappelle les gestes et propose toujours l’effacement de la dernière zone, l’enregistrement en copie ou l’écrasement de l’original.
+- **Métadonnées en plein écran** : amener le pointeur sur les huit derniers pixels du bord droit ouvre un volet superposé. Revenir sur l’image, sortir de la fenêtre ou appuyer sur Échap le referme. Le volet conserve le zoom de l’image et permet de parcourir les informations du fichier, dimensions, format, canaux, trames, EXIF, sous-répertoires EXIF/GPS/interopérabilité, données fabricant décodables, balises TIFF, textes PNG, IPTC, XMP et profil ICC disponibles dans le fichier. Les balises inconnues sont conservées ; les données binaires non décodables sont proposées en hexadécimal complet. Sélectionner une ligne affiche sa valeur intégrale, sélectionnable et copiable dans la zone inférieure. Lecture en arrière-plan et erreurs signalées. Le volet est réservé au plein écran et absent des fenêtres B.
+- **Zoom réel et dimensions** : l’indication représente désormais la taille par rapport aux pixels source, et non par rapport à l’ajustement initial. `100 %` correspond à un pixel source par pixel physique de l’écran, y compris avec la mise à l’échelle Windows. Les petites images ne sont plus agrandies automatiquement. Les grandes images sont réduites pour tenir entièrement dans l’écran en gardant leurs proportions ; leur vrai pourcentage est affiché. Le pourcentage est accompagné de la largeur et de la hauteur de l’image affichée, en pixels. L’agrandissement manuel reste possible.
+- **Fenêtres B indépendantes** : réduire la fenêtre principale ne réduit plus les images B. Chaque image possède un bouton **−** à côté de la croix, visible au survol, pour être réduite séparément. Les fenêtres B s’ouvrent sur l’écran depuis lequel elles sont demandées ; elles restent gérées par l’application et se ferment quand celle-ci est quittée.
+- **Zoom conservé dans B** : redimensionner une fenêtre, y compris par la poignée en bas à droite, conserve son échelle de zoom et son point de vue lorsque le défilement le permet. Glisser l’image permet toujours de la déplacer dans la fenêtre ; 0 / Ajuster réinitialise volontairement l’ajustement. Le pas de zoom est divisé par deux sur l’échelle multiplicative : deux crans correspondent à un ancien cran, dans les deux sens. Le zoom et le dézoom restent réversibles. Le menu du clic droit des petites fenêtres indique aussi le pourcentage réel et les dimensions.
 
 ## Nouveautés 2.12
 
@@ -83,11 +92,12 @@ Décompresser l’archive complète, puis lancer `TABaTAB Cash.exe` dans son dos
 | Flèches / molette en plein écran | Image précédente ou suivante |
 | Début / Fin | Première / dernière image |
 | + / − ou Ctrl+molette | Zoom avant / arrière |
-| 0 / * | Ajuster à l’écran, affichage 100 % |
+| 0 / * | Ajuster à l’écran, sans agrandir au-delà de la taille native |
 | M | Déplacer le plein écran sur l’écran suivant |
 | B | Fenêtres flottantes des images sélectionnées |
 | C / X | Recadrage |
 | F | Flou |
+| Ctrl+T pendant le flou | Afficher / masquer les huit poignées de transformation |
 | L / R | Rotation gauche / droite |
 | H | Miroir horizontal gauche-droite |
 | S | Rechercher l’image sur Yandex.com et Google Lens |
@@ -96,7 +106,7 @@ Décompresser l’archive complète, puis lancer `TABaTAB Cash.exe` dans son dos
 | Suppr / Maj+Suppr | Corbeille / suppression définitive |
 | Ctrl+Z | Restaurer la dernière image supprimée pendant la session |
 
-Le zoom affiché est relatif à l’image ajustée à l’écran : 100 % au départ, 125 % après `+`, 80 % après `−` depuis le niveau initial.
+Le zoom affiché indique l’échelle réelle : 100 % correspond à un pixel source par pixel physique de l’écran, 50 % à la moitié de la largeur et de la hauteur natives. L’ajustement initial dépend des dimensions de l’image et de l’écran, avec un maximum de 100 %. Les fenêtres B utilisent un demi-pas : deux crans équivalent à un cran du plein écran.
 
 ## Historique
 

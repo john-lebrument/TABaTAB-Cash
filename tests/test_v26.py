@@ -106,10 +106,10 @@ class FeaturesV26(unittest.TestCase):
         self.assertEqual(viewer.zoom_badge.x(), viewer.counter.x())
         self.assertGreaterEqual(viewer.zoom_badge.y(), viewer.counter.geometry().bottom())
         QTest.keyClick(viewer.view, Qt.Key.Key_Plus)
-        self.assertEqual(viewer.zoom_badge.text(), '125 %')
+        self.assertEqual(viewer.zoom_badge.text(), '125 % · 320 × 240 px')
         viewer.next_image()
         self.assertIn('1.png', viewer.counter.text())
-        self.assertEqual(viewer.zoom_badge.text(), '100 %')
+        self.assertEqual(viewer.zoom_badge.text(), '100 % · 320 × 240 px')
         self.assertFalse(viewer.hud.isVisible())
 
     def test_image_request_forwarded_between_processes_and_extra_instance_election(self):

@@ -1,5 +1,14 @@
 # Historique des versions
 
+## 2.13
+
+- Flou multizone : déplacement par glissement dans chaque ellipse, sélection de zone, Ctrl+T / bouton Transformer et huit poignées pour modifier largeur et hauteur. Création d’autres zones conservée ; aperçu et enregistrement utilisent les positions et dimensions modifiées. Entrée / Échap quitte d’abord la transformation sans effacer les zones.
+- Volet de métadonnées au survol du bord droit, uniquement dans le plein écran : informations du fichier et de l’image, EXIF et sous-répertoires, GPS, MakerNote décodable, TIFF, textes, IPTC, XMP, ICC et balises inconnues. Valeurs complètes consultables et copiables, y compris les blocs binaires en hexadécimal. Chargement en arrière-plan ; les résultats d’une ancienne image sont ignorés. Retour sur l’image ou sortie de la fenêtre : fermeture du volet.
+- Zoom affiché par rapport aux pixels physiques de l’écran, sans agrandissement automatique des petites images ; ajustement des grandes images à l’écran avec pourcentage réel. Dimensions en pixels à côté du pourcentage.
+- Fenêtres B sans fenêtre propriétaire Windows : réduction indépendante du navigateur principal et bouton de réduction individuel à côté de la croix. L’écran d’ouverture est conservé.
+- Le redimensionnement des fenêtres B conserve le zoom et le centre de défilement lorsque possible. Demi-pas de zoom / dézoom réversibles ; pourcentage et dimensions accessibles dans leur menu du clic droit.
+- Nouvelle distribution Windows portable complète ; préférences personnelles exclues de l’archive GitHub.
+
 ## 2.12
 
 - Bouton d’actualisation à icône native de flèche circulaire, près du chemin ; F5 et conservation de la sélection / du défilement.
