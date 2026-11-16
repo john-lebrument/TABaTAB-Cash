@@ -209,9 +209,10 @@ class NewBehaviors(unittest.TestCase):
         self.window.add_tab(str(destination))
         with patch.object(QMenu, 'exec', choose):
             self.window.custom_tab_bar._context_menu(self.window.custom_tab_bar.tabRect(0).center())
-        self.assertEqual(self.window.tab_widget.count(), 0)
-        self.window.add_new_tab()
         self.assertEqual(self.window.tab_widget.count(), 1)
+        self.assertIs(self.window.tab_widget.widget(0), self.tab)
+        self.window.add_new_tab()
+        self.assertEqual(self.window.tab_widget.count(), 2)
 
 
 if __name__ == '__main__':

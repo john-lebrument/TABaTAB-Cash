@@ -1,5 +1,4 @@
 import os
-import string
 import html
 from datetime import datetime
 from pathlib import Path
@@ -209,7 +208,7 @@ class DuplicateResultsDialog(QDialog):
         content = QWidget(scroll)
         groups_layout = QVBoxLayout(content)
         for number, (digest, paths) in enumerate(groups, 1):
-            group_title = QLabel(f'<b>GROUPE {number}</b> — {len(paths)} fichiers de contenu identique', content)
+            group_title = QLabel(f'<b>GROUPE {number}</b> — {len(paths)} fichiers identiques ou images aux pixels identiques', content)
             groups_layout.addWidget(group_title)
             for position, path in enumerate(paths):
                 card = QWidget(content)
@@ -606,7 +605,7 @@ class BrowserTabWidget(QWidget):
         self.btn_zips.toggled.connect(self._toggle_zips)
         sort_bar.addWidget(self.btn_zips)
         self.btn_duplicates = QPushButton('Doublons…', self)
-        self.btn_duplicates.setToolTip('Rechercher les fichiers de contenu identique dans ce dossier uniquement')
+        self.btn_duplicates.setToolTip('Rechercher les fichiers identiques et les images aux pixels identiques dans ce dossier uniquement')
         self.btn_duplicates.clicked.connect(self._find_duplicates)
         sort_bar.addWidget(self.btn_duplicates)
         self.btn_cross_duplicates = QPushButton('Doublons croisés…', self)
@@ -808,8 +807,7 @@ class BrowserTabWidget(QWidget):
 
     def _favorite_destinations(self):
         return [(self.fav_list.item(i).text(), self.fav_list.item(i).data(ROLE_PATH))
-                for i in range(self.fav_list.count())
-                if Path(self.fav_list.item(i).data(ROLE_PATH)).is_dir()]
+                for i in range(self.fav_list.count())]
 
     def _add_favorites_exchange_actions(self, menu):
         menu.addAction('Exporter les favoris…').triggered.connect(self.export_favorites)
@@ -922,7 +920,7 @@ class BrowserTabWidget(QWidget):
             self.folder_deleted.emit(deleted)
 
     def _populate_favorites(self):
-        """Populates default system shortcuts and custom user-added favorites with compact height."""
+        """Build shortcuts without touching potentially unavailable network paths."""
         self.fav_list.clear()
         compact_size = QSize(0, 23)
         hidden = self.config.get('hidden_favorites', []) if self.config else []
@@ -931,10 +929,10 @@ class BrowserTabWidget(QWidget):
         custom_favs = self.config.get("custom_favorites", []) if self.config else []
         for fav_path in custom_favs:
             p = Path(fav_path)
-            if p.is_dir():
+            if fav_path:
                 item = QListWidgetItem(f"⭐ {p.name}")
                 item.setToolTip(fav_path)
-                item.setData(ROLE_PATH, str(p.resolve()))
+                item.setData(ROLE_PATH, str(p.absolute()))
                 item.setData(ROLE_IS_CUSTOM_FAV, True)
                 item.setSizeHint(compact_size)
                 self.fav_list.addItem(item)
@@ -950,18 +948,19 @@ class BrowserTabWidget(QWidget):
         ]
 
         for label, path in shortcuts:
-            if path.exists() and str(path.resolve()) not in hidden:
+            if str(path.absolute()) not in hidden:
                 item = QListWidgetItem(label)
                 item.setToolTip(str(path))
-                item.setData(ROLE_PATH, str(path.resolve()))
+                item.setData(ROLE_PATH, str(path.absolute()))
                 item.setData(ROLE_IS_CUSTOM_FAV, False)
                 item.setSizeHint(compact_size)
                 self.fav_list.addItem(item)
 
         # 3. Windows Drives (C:, D:, etc.)
-        for letter in string.ascii_uppercase:
-            drive_path = Path(f"{letter}:\\")
-            if drive_path.exists() and str(drive_path.resolve()) not in hidden:
+        for drive in QDir.drives():
+            drive_path = Path(drive.absoluteFilePath())
+            letter = drive_path.drive.rstrip(":")
+            if str(drive_path) not in hidden:
                 item = QListWidgetItem(f"💾 Disque ({letter}:)")
                 item.setToolTip(str(drive_path))
                 item.setData(ROLE_PATH, str(drive_path))

@@ -236,6 +236,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.config = config_manager
         self._restoring_tabs = True
+        self._next_tab_serial = 0
         self.fullscreen_viewer = None
         self.floating_viewers = set()
         self.thumbnail_manager = ThumbnailManager()
@@ -373,6 +374,8 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         folder_name = Path(folder_path).name or folder_path
+        tab.creation_serial = self._next_tab_serial
+        self._next_tab_serial += 1
         idx = self.tab_widget.addTab(tab, folder_name)
         self.tab_widget.setTabToolTip(idx, folder_path)
 
@@ -426,10 +429,14 @@ class MainWindow(QMainWindow):
         self.add_tab(folder, switch_to=True)
 
     def close_all_tabs(self):
-        while self.tab_widget.count():
-            widget = self.tab_widget.widget(0)
-            self.tab_widget.removeTab(0)
-            widget.deleteLater()
+        tabs = [self.tab_widget.widget(i) for i in range(self.tab_widget.count())]
+        keeper = min(tabs, key=lambda tab: tab.creation_serial) if tabs else None
+        for widget in tabs:
+            if widget is not keeper:
+                self.tab_widget.removeTab(self.tab_widget.indexOf(widget))
+                widget.deleteLater()
+        if keeper:
+            self.tab_widget.setCurrentWidget(keeper)
         self.btn_new_tab.show()
         self._save_tab_state()
 

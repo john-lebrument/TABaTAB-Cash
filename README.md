@@ -1,8 +1,16 @@
-# TABaTAB Cash — version 2.13
+# TABaTAB Cash — version 2.14
 
 Visionneuse et explorateur d’images Windows portable avec onglets, favoris, navigation plein écran et outils de retouche.
 
 **[Télécharger la dernière version Windows](https://github.com/john-lebrument/tabatab-cash/releases/latest)** · **[Historique des versions et nouveautés](CHANGELOG.md)**
+
+## Nouveautés 2.14
+
+- Ouverture des onglets : suppression des vérifications synchrones des favoris et du balayage des 26 lettres de lecteurs. Les favoris indisponibles restent visibles et conservés ; accès au dossier seulement à la demande.
+- « Fermer tous les onglets » conserve et active le plus ancien onglet encore ouvert, même après déplacement des onglets.
+- Collage par clic droit corrigé dans le dossier actuel, sur un fichier comme dans une zone vide ; images du presse-papiers et fichiers copiés/coupés pris en charge.
+- Doublons du dossier courant : détection des fichiers strictement identiques et des images statiques aux pixels RGBA strictement identiques, après orientation EXIF, malgré des métadonnées, compressions sans perte ou formats différents. Aucune comparaison approximative : des images recompressées avec perte peuvent rester distinctes. Animations et documents multipages : comparaison du fichier complet uniquement. Sous-dossiers exclus.
+- Conservation du premier fichier par ordre alphabétique et nouvelle vérification avant mise à la corbeille. Les métadonnées des exemplaires peuvent différer ; vérifier les résultats avant suppression. L’outil Doublons croisés conserve sa comparaison octet par octet.
 
 ## Nouveautés 2.13
 
@@ -62,7 +70,7 @@ Visionneuse et explorateur d’images Windows portable avec onglets, favoris, na
 - **Début / Fin dans les miniatures** : rejoint la première ou la dernière image et fait défiler la grille jusqu’à elle.
 - **Actualisation automatique** : surveillance du dossier, relecture au retour sur un onglet ou dans la fenêtre. Les nouveaux fichiers sont triés selon le réglage courant, avec conservation de la sélection et de la position de défilement. Les miniatures modifiées sont invalidées. F5 reste disponible.
 - **Bouton ZIP** : affiche ou masque les archives ZIP, avec choix mémorisé. Double-cliquer ouvre l’archive avec Windows ; les ZIP ne font pas partie du diaporama.
-- **Doublons du dossier affiché** : recherche en arrière-plan, annulable, de tous les fichiers ordinaires de contenu identique par SHA-256, indépendamment de leur nom et de leur extension. Les sous-dossiers et les liens sont exclus. La liste indique les fichiers conservés et les copies à supprimer. Le premier nom par ordre alphabétique est conservé ; les autres peuvent être envoyés à la corbeille avec le bouton Supprimer les doublons. Les empreintes sont revérifiées avant suppression et les fichiers sont conservés si la corbeille est indisponible.
+- **Doublons du dossier affiché** : recherche en arrière-plan, annulable, des fichiers ordinaires identiques par SHA-256 et des images statiques aux pixels identiques (depuis la 2.14), indépendamment de leur nom et de leur extension. Les sous-dossiers et les liens sont exclus. La liste indique les fichiers conservés et les copies à supprimer. Le premier nom par ordre alphabétique est conservé ; les autres peuvent être envoyés à la corbeille avec le bouton Supprimer les doublons. Les empreintes sont revérifiées avant suppression et les fichiers sont conservés si la corbeille est indisponible.
 - **Glisser-déposer renforcé** : suppression du transfert de secours utilisant une ancienne destination survolée ; dépôt dans une zone vide de la barre d’onglets refusé. Les transferts depuis la grille vers un onglet sont différés jusqu’à la fin du glisser-déposer Windows. Cette correction retire des comportements ambigus ; elle ne prétend pas établir la cause de l’incident observé en 2.6.
 
 

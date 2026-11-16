@@ -788,7 +788,7 @@ class ThumbnailView(QListWidget):
             self._add_sort_menu(menu)
             menu.addAction('Nouveau dossier…').triggered.connect(self._create_folder)
             paste = menu.addAction('Coller dans le dossier actuel (Ctrl+V)')
-            paste.triggered.connect(self.paste_images)
+            paste.triggered.connect(lambda: self.paste_images(self.current_folder))
             menu.exec(self.mapToGlobal(pos))
             return
 
@@ -823,7 +823,7 @@ class ThumbnailView(QListWidget):
             menu.addAction('Coller dans ce dossier (Ctrl+V)').triggered.connect(
                 lambda: self.paste_images(file_path))
         else:
-            menu.addAction('Coller dans le dossier actuel (Ctrl+V)').triggered.connect(self.paste_images)
+            menu.addAction('Coller dans le dossier actuel (Ctrl+V)').triggered.connect(lambda: self.paste_images(self.current_folder))
         menu.addSeparator()
 
         if is_folder:
