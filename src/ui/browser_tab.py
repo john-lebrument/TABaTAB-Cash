@@ -189,17 +189,50 @@ class FavoritesList(QListWidget):
             QTimer.singleShot(0, self.order_changed.emit)
 
 
+class DuplicateCard(QWidget):
+    clicked = pyqtSignal()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+
+class DuplicatePreview(QLabel):
+    clicked = pyqtSignal()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
+
+
 class DuplicateResultsDialog(QDialog):
     """French, image-first summary of already-detected duplicate groups."""
 
-    def __init__(self, groups, errors, count, parent=None):
+    def __init__(self, groups, errors, count, parent=None, *, resized=False):
         super().__init__(parent)
         self.delete_requested = False
+        self.retry_resized = False
+        self.groups = [(digest, list(paths)) for digest, paths in groups]
         self.setWindowTitle('Résultats de la recherche des doublons')
         self.resize(760, 680)
         layout = QVBoxLayout(self)
-        header = QLabel(f'<b>{count} fichier(s) en double</b> dans {len(groups)} groupe(s). '
-                        'Les fichiers conservés sont signalés pour chaque groupe.', self)
+        if not count:
+            summary = 'Aucun doublon trouvé.'
+        elif resized:
+            summary = 'Images possiblement redimensionnées. Comparez les aperçus avant une mise à la corbeille.'
+        else:
+            summary = f'<b>{count} fichier(s) en double</b> dans {len(groups)} groupe(s).'
+        header = QLabel(summary + (' Cliquez sur une ligne pour choisir le fichier à conserver.' if count else ''), self)
         header.setWordWrap(True)
         layout.addWidget(header)
 
@@ -207,22 +240,27 @@ class DuplicateResultsDialog(QDialog):
         scroll.setWidgetResizable(True)
         content = QWidget(scroll)
         groups_layout = QVBoxLayout(content)
-        for number, (digest, paths) in enumerate(groups, 1):
-            group_title = QLabel(f'<b>GROUPE {number}</b> — {len(paths)} fichiers identiques ou images aux pixels identiques', content)
+        for number, (_, paths) in enumerate(self.groups, 1):
+            group_title = QLabel(f'<b>GROUPE {number}</b> — {len(paths)} fichiers', content)
             groups_layout.addWidget(group_title)
-            for position, path in enumerate(paths):
-                card = QWidget(content)
+            choices = {}
+            for path in paths:
+                card = DuplicateCard(content)
+                card.setCursor(Qt.CursorShape.PointingHandCursor)
                 row = QHBoxLayout(card)
                 row.setContentsMargins(8, 5, 8, 5)
-                preview = QLabel(card)
+                preview = DuplicatePreview(card)
                 preview.setFixedSize(76, 76)
                 preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 preview.setStyleSheet('background: #303030; border: 1px solid #555;')
                 pixmap = self._preview(path)
                 if not pixmap.isNull():
                     preview.setPixmap(pixmap)
+                    preview.setToolTip('Ouvrir l’image dans une nouvelle fenêtre')
+                    preview.clicked.connect(lambda p=path: self._open_preview(p))
                 else:
                     preview.setText('Fichier')
+                    preview.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
                 row.addWidget(preview)
                 try:
                     info = Path(path).stat()
@@ -230,22 +268,30 @@ class DuplicateResultsDialog(QDialog):
                     size = BrowserTabWidget._format_file_size(info.st_size)
                 except OSError:
                     modified, size = 'indisponible', 'indisponible'
-                disposition = 'À CONSERVER' if position == 0 else 'À ENVOYER À LA CORBEILLE'
                 name = html.escape(Path(path).name)
                 safe_path = html.escape(str(path))
                 suffix = html.escape(Path(path).suffix.lower() or 'sans extension')
-                details = QLabel(
-                    f'<b>{disposition}</b><br>'
+                description = (
                     f'<b>Nom :</b> {name}<br>'
                     f'<b>Format :</b> {suffix}<br>'
                     f'<b>Taille :</b> {html.escape(size)}<br>'
                     f'<b>Modifié le :</b> {html.escape(modified)}<br>'
-                    f'<b>Emplacement :</b> {safe_path}', card)
+                    f'<b>Emplacement :</b> {safe_path}')
+                details = QLabel(card)
+                details.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
                 details.setTextFormat(Qt.TextFormat.RichText)
                 details.setWordWrap(True)
                 row.addWidget(details, 1)
+                marker = QPushButton(card)
+                marker.setFixedWidth(38)
+                row.addWidget(marker)
+                choices[path] = (details, description, marker)
+                select = lambda p=path, group=paths, rows=choices: self._choose_keeper(group, rows, p)
+                card.clicked.connect(select)
+                marker.clicked.connect(lambda checked=False, choose=select: choose())
                 card.setStyleSheet('QWidget { background: #252525; border-radius: 5px; }')
                 groups_layout.addWidget(card)
+            self._choose_keeper(paths, choices, paths[0])
             groups_layout.addSpacing(10)
         if errors:
             failures = QLabel('<b>Fichiers non comparés :</b><br>' +
@@ -261,6 +307,10 @@ class DuplicateResultsDialog(QDialog):
         self.close_button = QPushButton('Fermer', self)
         self.close_button.clicked.connect(self.reject)
         buttons.addWidget(self.close_button)
+        if not count and not resized:
+            retry = QPushButton('Rechercher les images redimensionnées', self)
+            retry.clicked.connect(self._retry)
+            buttons.addWidget(retry)
         self.delete_button = QPushButton('Supprimer les doublons', self) if count else None
         if self.delete_button:
             self.delete_button.setStyleSheet('QPushButton { background: #a62626; font-weight: bold; padding: 8px 14px; } QPushButton:hover { background: #c93636; }')
@@ -269,17 +319,52 @@ class DuplicateResultsDialog(QDialog):
         layout.addLayout(buttons)
 
     @staticmethod
-    def _preview(path):
+    def _preview(path, bounds=(72, 72)):
         if not is_image_file(path):
             return QPixmap()
         try:
             with Image.open(path) as opened:
                 image = ImageOps.exif_transpose(opened).convert('RGBA')
-                image.thumbnail((72, 72), Image.Resampling.LANCZOS)
+                image.thumbnail(bounds, Image.Resampling.LANCZOS)
                 return QPixmap.fromImage(QImage(image.tobytes(), image.width, image.height,
                                                 image.width * 4, QImage.Format.Format_RGBA8888).copy())
         except Exception:
             return QPixmap()
+
+    @staticmethod
+    def _choose_keeper(paths, rows, keeper):
+        paths.remove(keeper)
+        paths.insert(0, keeper)
+        for path, (details, description, marker) in rows.items():
+            keep = path == keeper
+            disposition = 'À CONSERVER' if keep else 'À ENVOYER À LA CORBEILLE'
+            details.setText(f'<b>{disposition}</b><br>{description}')
+            marker.setText('✓' if keep else '✕')
+            marker.setToolTip('Fichier conservé' if keep else 'Cliquer pour conserver ce fichier')
+            marker.setAccessibleName(disposition)
+            marker.setStyleSheet(f'font-size: 22px; font-weight: bold; color: {"#58db83" if keep else "#ff6464"};')
+
+    def _open_preview(self, path):
+        available = self.screen().availableGeometry()
+        pixmap = self._preview(path, (int(available.width() * .85), int(available.height() * .85)))
+        if pixmap.isNull():
+            QMessageBox.warning(self, 'Aperçu indisponible', str(path))
+            return
+        window = QDialog(self)
+        window.setWindowTitle(Path(path).name)
+        window.setWindowFlag(Qt.WindowType.WindowMinMaxButtonsHint)
+        window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        layout = QVBoxLayout(window)
+        image = QLabel(window)
+        image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        image.setPixmap(pixmap)
+        layout.addWidget(image)
+        self.finished.connect(window.close)
+        window.show()
+
+    def _retry(self):
+        self.retry_resized = True
+        self.accept()
 
     def _delete(self):
         self.delete_requested = True
@@ -606,7 +691,7 @@ class BrowserTabWidget(QWidget):
         sort_bar.addWidget(self.btn_zips)
         self.btn_duplicates = QPushButton('Doublons…', self)
         self.btn_duplicates.setToolTip('Rechercher les fichiers identiques et les images aux pixels identiques dans ce dossier uniquement')
-        self.btn_duplicates.clicked.connect(self._find_duplicates)
+        self.btn_duplicates.clicked.connect(lambda: self._find_duplicates())
         sort_bar.addWidget(self.btn_duplicates)
         self.btn_cross_duplicates = QPushButton('Doublons croisés…', self)
         self.btn_cross_duplicates.setToolTip('Comparer un ou plusieurs dossiers avec d’autres dossiers')
@@ -756,11 +841,12 @@ class BrowserTabWidget(QWidget):
         dialog.raise_()
         dialog.activateWindow()
 
-    def _find_duplicates(self):
+    def _find_duplicates(self, resized=False, folder=None):
         if self._duplicate_scan is not None: return
-        self._duplicate_scan = DuplicateScan(self.current_folder)
+        self._duplicate_scan = DuplicateScan(folder or self.current_folder, resized)
         self.btn_duplicates.setEnabled(False)
-        self._scan_dialog = QProgressDialog('Comparaison SHA-256 des fichiers…', 'Annuler', 0, 0, self)
+        message = 'Comparaison des images redimensionnées…' if resized else 'Comparaison exacte des fichiers et images…'
+        self._scan_dialog = QProgressDialog(message, 'Annuler', 0, 0, self)
         self._scan_dialog.setWindowTitle('Recherche des doublons')
         self._scan_dialog.setMinimumDuration(0)
         self._scan_dialog.canceled.connect(self._duplicate_scan.cancel)
@@ -768,16 +854,18 @@ class BrowserTabWidget(QWidget):
         QThreadPool.globalInstance().start(self._duplicate_scan)
 
     def _duplicates_found(self, groups, errors):
-        cancelled = self._duplicate_scan.cancelled.is_set()
+        scan = self._duplicate_scan
         self._scan_dialog.close()
         self._duplicate_scan = None
         self.btn_duplicates.setEnabled(True)
-        if groups is None or cancelled: return
+        if groups is None or scan.cancelled.is_set(): return
         count = sum(len(paths) - 1 for _, paths in groups)
-        dialog = DuplicateResultsDialog(groups, errors, count, self)
+        dialog = DuplicateResultsDialog(groups, errors, count, self, resized=scan.resized)
         dialog.exec()
-        if dialog.delete_requested:
-            removed, failures = recycle_duplicates(groups)
+        if dialog.retry_resized:
+            self._find_duplicates(resized=True, folder=scan.folder)
+        elif dialog.delete_requested:
+            removed, failures = recycle_duplicates(dialog.groups)
             self.refresh()
             QMessageBox.information(self, 'Doublons', f'{len(removed)} fichier(s) envoyé(s) à la corbeille.' + ('\n' + '\n'.join(failures) if failures else ''))
 

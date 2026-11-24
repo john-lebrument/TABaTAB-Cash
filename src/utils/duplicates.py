@@ -1,8 +1,9 @@
-"""Exact, non-recursive duplicate detection and conservative recycling."""
+"""Exact and resized-image matches in one folder, with verification before recycling."""
 import hashlib
 import threading
+from dataclasses import dataclass
 from pathlib import Path
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
 from src.utils.file_ops import is_image_file
 from PyQt6.QtCore import QObject, QRunnable, pyqtSignal, QFile
 
@@ -47,7 +48,7 @@ def comparison_digest(path, expected=None, cancelled=lambda: False):
                 return pixels
         except InterruptedError:
             raise
-        except (UnidentifiedImageError, OSError, ValueError):
+        except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
             if expected is not None:
                 raise
     return digest_file(path, cancelled)
@@ -82,6 +83,78 @@ def find_duplicates(folder, cancelled=lambda: False):
             for digest, paths in groups.items() if len(paths) > 1], errors
 
 
+@dataclass(frozen=True)
+class ResizedMatch:
+    fingerprints: dict
+
+
+def _resized_preview(path, cancelled):
+    before = path.stat()
+    with Image.open(path) as opened:
+        if getattr(opened, 'n_frames', 1) != 1:
+            return None
+        image = ImageOps.exif_transpose(opened).convert('RGBA')
+        preview = image.resize((64, 64), Image.Resampling.LANCZOS)
+    # Ignore invisible RGB, but compare transparency as a separate channel.
+    black = Image.new('RGBA', preview.size, (0, 0, 0, 255))
+    visible = Image.alpha_composite(black, preview).convert('RGB')
+    visible.putalpha(preview.getchannel('A'))
+    fingerprint = digest_file(path, cancelled)
+    after = path.stat()
+    if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+        raise OSError('Fichier modifié pendant la lecture')
+    return image.size, visible, fingerprint
+
+
+def _matches_resized(first, second):
+    (w1, h1), image1, _ = first
+    (w2, h2), image2, _ = second
+    ratio_difference = abs(w1 * h2 - w2 * h1)
+    if ratio_difference > min(max(w1, w2, h1, h2), max(w1 * h2, w2 * h1) * .02):
+        return False
+    difference = ImageChops.difference(image1, image2)
+    for histogram in (channel.histogram() for channel in difference.split()):
+        if sum(histogram[24:]) > 40 or sum(i * n for i, n in enumerate(histogram)) > 4096 * 3:
+            return False
+    return True
+
+
+def find_resized_duplicates(folder, cancelled=lambda: False):
+    clusters, errors = [], []
+    for path in sorted(Path(folder).iterdir(), key=lambda p: (p.name.casefold(), p.name)):
+        if cancelled():
+            raise InterruptedError('Recherche annulée')
+        if not is_image_file(path) or path.is_symlink() or not path.is_file():
+            continue
+        try:
+            preview = _resized_preview(path, cancelled)
+        except InterruptedError:
+            raise
+        except (OSError, ValueError, Image.DecompressionBombError) as error:
+            errors.append(f'{path.name} : {error}')
+            continue
+        if preview is None:
+            continue
+        for cluster in clusters:
+            if cancelled():
+                raise InterruptedError('Recherche annulée')
+            if all(_matches_resized(preview, other) for _, other in cluster):
+                cluster.append((path, preview))
+                break
+        else:
+            clusters.append([(path, preview)])
+    groups = [(ResizedMatch({path: preview[2] for path, preview in cluster}),
+               [path for path, _ in cluster]) for cluster in clusters
+              if len({preview[0] for _, preview in cluster}) > 1]
+    return groups, errors
+
+
+def _still_matches(path, digest):
+    if isinstance(digest, ResizedMatch):
+        return digest_file(path) == digest.fingerprints[path]
+    return comparison_digest(path, digest) == digest
+
+
 def recycle_duplicates(groups):
     removed, errors = [], []
     for digest, paths in groups:
@@ -89,7 +162,7 @@ def recycle_duplicates(groups):
         for duplicate in paths[1:]:
             try:
                 if keeper.is_symlink() or duplicate.is_symlink(): raise OSError('Lien ignoré')
-                if comparison_digest(keeper, digest) != digest or comparison_digest(duplicate, digest) != digest:
+                if not _still_matches(keeper, digest) or not _still_matches(duplicate, digest):
                     raise OSError('Contenu modifié depuis la recherche ; fichier conservé')
                 if not QFile(str(duplicate)).moveToTrash():
                     raise OSError('Corbeille indisponible ; fichier conservé')
@@ -103,16 +176,18 @@ class ScanSignals(QObject):
 
 
 class DuplicateScan(QRunnable):
-    def __init__(self, folder):
+    def __init__(self, folder, resized=False):
         super().__init__()
         self.folder = folder
+        self.resized = resized
         self.signals = ScanSignals()
         self.cancelled = threading.Event()
 
     def cancel(self): self.cancelled.set()
 
     def run(self):
-        try: groups, errors = find_duplicates(self.folder, self.cancelled.is_set)
+        scan = find_resized_duplicates if self.resized else find_duplicates
+        try: groups, errors = scan(self.folder, self.cancelled.is_set)
         except InterruptedError: groups, errors = None, []
         except OSError as error: groups, errors = [], [str(error)]
         self.signals.finished.emit(groups, errors)

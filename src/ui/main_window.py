@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QHBoxLayout,
     QMainWindow,
+    QLineEdit,
     QMessageBox,
     QMenu,
     QPushButton,
@@ -28,6 +29,7 @@ from PyQt6.QtWidgets import (
 
 from src.config import ConfigManager
 from src.ui.browser_tab import BrowserTabWidget
+from src.ui.filename_search_tab import FilenameSearchTab
 from src.ui.styles import get_theme_stylesheet
 from src.utils.file_ops import is_image_file, is_media_file, is_browser_file, move_file, copy_file
 from src.utils.image_loader import ThumbnailManager
@@ -214,6 +216,9 @@ class DragDropTabBar(QTabBar):
                 is_copy = drop_action(event) == Qt.DropAction.CopyAction
                 if hasattr(event.source(), '_pending_internal_drop'):
                     target_tab = self.parent().widget(tab_index)
+                    if not isinstance(target_tab, BrowserTabWidget):
+                        event.ignore()
+                        return
                     event.source()._pending_internal_drop = (file_paths, target_tab.current_folder, is_copy)
                 else:
                     self.files_dropped_on_tab.emit(tab_index, file_paths, is_copy)
@@ -263,6 +268,23 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
+
+        search_layout = QHBoxLayout()
+        search_layout.setContentsMargins(8, 4, 8, 4)
+        self.filename_query = QLineEdit(self)
+        self.filename_query.setPlaceholderText('Rechercher des images par nom sur les disques (ex. IMG_*.jpg)')
+        self.filename_query.setClearButtonEnabled(True)
+        self.filename_query.returnPressed.connect(self._search_filenames)
+        search_layout.addWidget(self.filename_query)
+        self.filename_search_button = QToolButton(self)
+        self.filename_search_button.setText('🔍')
+        self.filename_search_button.setToolTip('Rechercher les images')
+        self.filename_search_button.setAccessibleName('Rechercher les images')
+        self.filename_search_button.clicked.connect(self._search_filenames)
+        search_layout.addWidget(self.filename_search_button)
+        filename_bar = QWidget(self)
+        filename_bar.setLayout(search_layout)
+        main_layout.addWidget(filename_bar)
 
         # Tab Widget with Custom TabBar
         self.tab_widget = QTabWidget(self)
@@ -319,6 +341,30 @@ class MainWindow(QMainWindow):
 
     def _get_theme_btn_text(self) -> str:
         return "☀️ Mode Clair" if self.current_theme == "dark" else "🌙 Mode Sombre"
+
+    def _search_filenames(self):
+        query = self.filename_query.text().strip()
+        if not query:
+            return
+        if any(char in query for char in '"<>|:/\\'):
+            QMessageBox.information(self, 'Recherche d’images', 'Saisissez un nom de fichier, avec * ou ? si nécessaire.')
+            return
+        tab = FilenameSearchTab(query, self)
+        tab.creation_serial = self._next_tab_serial
+        self._next_tab_serial += 1
+        tab.open_image.connect(self._open_search_image)
+        tab.open_folder.connect(self.add_tab)
+        label = query if len(query) <= 28 else query[:27] + '…'
+        index = self.tab_widget.addTab(tab, 'Recherche ' + label)
+        self.tab_widget.setTabToolTip(index, query)
+        self.tab_widget.setCurrentWidget(tab)
+        tab.refresh()
+
+    def _open_search_image(self, paths, path):
+        if Path(path).is_file():
+            self._on_request_floating(paths, path)
+        else:
+            QMessageBox.information(self, 'Image introuvable', path)
 
     def toggle_theme(self):
         """Toggles between dark and light themes and persists choice."""
@@ -457,10 +503,11 @@ class MainWindow(QMainWindow):
             self.tab_widget.setCurrentIndex((self.tab_widget.currentIndex() + 1) % count)
 
     def get_current_tab_widget(self) -> BrowserTabWidget | None:
-        return self.tab_widget.currentWidget()
+        widget = self.tab_widget.currentWidget()
+        return widget if isinstance(widget, BrowserTabWidget) else None
 
     def refresh_current_tab(self):
-        current = self.get_current_tab_widget()
+        current = self.tab_widget.currentWidget()
         if current:
             current.refresh()
 
@@ -479,6 +526,8 @@ class MainWindow(QMainWindow):
             current.refresh()
             total = len(current.thumb_view.all_files)
             self.status_bar.showMessage(f"{current.current_folder} — {total} image(s)")
+        elif isinstance(self.tab_widget.currentWidget(), FilenameSearchTab):
+            self.status_bar.showMessage('Recherche d’images par nom')
 
     def changeEvent(self, event):
         super().changeEvent(event)
@@ -516,7 +565,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, 'Ouverture impossible', f'Image introuvable ou format non pris en charge :\n{path}')
             return
         tab = next((self.tab_widget.widget(i) for i in range(self.tab_widget.count())
-                    if Path(self.tab_widget.widget(i).current_folder) == path.parent), None)
+                    if isinstance(self.tab_widget.widget(i), BrowserTabWidget)
+                    and Path(self.tab_widget.widget(i).current_folder) == path.parent), None)
         if tab is None:
             tab = self.add_tab(str(path.parent))
         else:
@@ -553,7 +603,7 @@ class MainWindow(QMainWindow):
     def _on_folder_created(self, path):
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
-            if Path(tab.current_folder) == Path(path).parent:
+            if isinstance(tab, BrowserTabWidget) and Path(tab.current_folder) == Path(path).parent:
                 tab.refresh()
         self.status_bar.showMessage(f'Dossier créé : {Path(path).name}', 3000)
 
@@ -564,6 +614,8 @@ class MainWindow(QMainWindow):
             return candidate == removed or removed in candidate.parents
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
+            if not isinstance(tab, BrowserTabWidget):
+                continue
             tab.history_back = [p for p in tab.history_back if not inside(p)]
             tab.history_forward = [p for p in tab.history_forward if not inside(p)]
             if inside(tab.current_folder):
@@ -593,6 +645,8 @@ class MainWindow(QMainWindow):
         self.config.set('favorite_order', [[remap(p), custom] for p, custom in self.config.get('favorite_order', [])])
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
+            if not isinstance(tab, BrowserTabWidget):
+                continue
             tab.history_back = [remap(p) for p in tab.history_back]
             tab.history_forward = [remap(p) for p in tab.history_forward]
             destination = remap(tab.current_folder)
@@ -638,7 +692,7 @@ class MainWindow(QMainWindow):
             self.thumbnail_manager.cache.invalidate(new)
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
-            if Path(tab.current_folder) in folders:
+            if isinstance(tab, BrowserTabWidget) and Path(tab.current_folder) in folders:
                 tab.refresh()
         for viewer in [self.fullscreen_viewer, *self.floating_viewers]:
             if viewer and any(Path(p) in mapping for p in viewer.image_list):
@@ -649,7 +703,7 @@ class MainWindow(QMainWindow):
         self.thumbnail_manager.cache.invalidate(path)
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
-            if Path(tab.current_folder) == Path(path).parent:
+            if isinstance(tab, BrowserTabWidget) and Path(tab.current_folder) == Path(path).parent:
                 tab.refresh()
                 tab.thumb_view.select_path(path)
         self.status_bar.showMessage(f'Image restaurée : {Path(path).name}', 3000)
@@ -728,15 +782,22 @@ class MainWindow(QMainWindow):
         if self._restoring_tabs:
             return
         folders = []
+        active = self.config.get("active_tab", 0)
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
             if isinstance(tab, BrowserTabWidget):
+                if tab is self.tab_widget.currentWidget():
+                    active = len(folders)
                 folders.append(tab.current_folder)
 
         self.config.set("tabs", folders)
-        self.config.set("active_tab", self.tab_widget.currentIndex())
+        self.config.set("active_tab", min(active, max(0, len(folders) - 1)))
 
     def closeEvent(self, event):
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            if isinstance(tab, FilenameSearchTab):
+                tab.cancel()
         self.config.set("window_width", self.width())
         self.config.set("window_height", self.height())
         self._save_tab_state()

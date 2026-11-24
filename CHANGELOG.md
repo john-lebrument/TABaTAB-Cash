@@ -1,5 +1,11 @@
 # Historique des versions
 
+## 2.15
+
+- Rapport des doublons du dossier courant avec miniatures cliquables, aperçu dans une fenêtre dédiée et choix du fichier à conserver par clic sur sa ligne. Coche verte pour le fichier conservé et croix rouges pour les copies à envoyer à la corbeille.
+- Après une recherche exacte sans résultat, possibilité de comparer les images statiques redimensionnées. Le rapport signale des correspondances visuelles probables et le contenu de chacun des fichiers est revérifié avant envoi à la corbeille.
+- Champ avec loupe pour rechercher les images par nom, avec prise en charge de `*` et `?`. Les résultats s’ouvrent dans un onglet à partir de l’index d’Everything s’il tourne, ou d’un parcours annulable des lecteurs locaux accessibles.
+
 ## 2.14
 
 - Ouverture des onglets : suppression des vérifications synchrones des favoris et du balayage des 26 lettres de lecteurs. Les favoris indisponibles restent visibles et conservés ; accès au dossier seulement à la demande.
