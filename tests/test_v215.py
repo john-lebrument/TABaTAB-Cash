@@ -90,5 +90,5 @@ class FeaturesV215(unittest.TestCase):
         self.assertEqual(tab.model.rowCount(), 1)
         self.assertEqual(tab.model.index(0, 0).data(), Path(match).name)
         with patch.object(self.window, '_on_request_floating') as open_image:
-            tab.table.activated.emit(tab.model.index(0, 0))
+            tab.grid.activated.emit(tab.model.index(0, 0))
         open_image.assert_called_once_with(paths, str(match))

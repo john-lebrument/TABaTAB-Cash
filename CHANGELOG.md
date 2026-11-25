@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 2.16
+
+- Onglet de recherche par nom avec grille de miniatures, chemin complet au survol et tri par nom, taille ou chemin dans les deux sens.
+- Rapport des doublons du dossier courant : dimensions en pixels affichées à côté du poids des images et mise à la corbeille individuelle avec vérification du fichier et d’une autre copie. Le rapport retire les groupes réduits à un seul fichier, qui reste sur le disque.
+
 ## 2.15
 
 - Rapport des doublons du dossier courant avec miniatures cliquables, aperçu dans une fenêtre dédiée et choix du fichier à conserver par clic sur sa ligne. Coche verte pour le fichier conservé et croix rouges pour les copies à envoyer à la corbeille.

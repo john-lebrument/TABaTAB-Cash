@@ -1,8 +1,13 @@
-# TABaTAB Cash — version 2.15
+# TABaTAB Cash — version 2.16
 
 Visionneuse et explorateur d’images Windows portable avec onglets, favoris, navigation plein écran et outils de retouche.
 
 **[Télécharger la dernière version Windows](https://github.com/john-lebrument/tabatab-cash/releases/latest)** · **[Historique des versions et nouveautés](CHANGELOG.md)**
+
+## Nouveautés 2.16
+
+- **Résultats de recherche** : grille de miniatures comme dans la visionneuse, avec le chemin complet au survol. Trier par nom, par taille du fichier ou par chemin, en ordre croissant ou décroissant. Les miniatures visibles et les tailles se chargent en arrière-plan.
+- **Rapport des doublons du dossier courant** : les dimensions en pixels sont affichées à côté du poids des images. Le bouton corbeille devant une ligne permet d’envoyer ce fichier seul à la corbeille, après vérification. Si le fichier coché est envoyé à la corbeille, un autre fichier du groupe reçoit la coche. Le dernier fichier restant est conservé et son groupe disparaît du rapport.
 
 ## Nouveautés 2.15
 

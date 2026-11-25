@@ -222,30 +222,35 @@ class DuplicateResultsDialog(QDialog):
         super().__init__(parent)
         self.delete_requested = False
         self.retry_resized = False
+        self.recycled = []
+        self.resized = resized
+        self.group_widgets = {}
         self.groups = [(digest, list(paths)) for digest, paths in groups]
         self.setWindowTitle('Résultats de la recherche des doublons')
         self.resize(760, 680)
         layout = QVBoxLayout(self)
-        if not count:
-            summary = 'Aucun doublon trouvé.'
-        elif resized:
-            summary = 'Images possiblement redimensionnées. Comparez les aperçus avant une mise à la corbeille.'
-        else:
-            summary = f'<b>{count} fichier(s) en double</b> dans {len(groups)} groupe(s).'
-        header = QLabel(summary + (' Cliquez sur une ligne pour choisir le fichier à conserver.' if count else ''), self)
-        header.setWordWrap(True)
-        layout.addWidget(header)
+        self.header = QLabel(self)
+        self.header.setWordWrap(True)
+        layout.addWidget(self.header)
 
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         content = QWidget(scroll)
         groups_layout = QVBoxLayout(content)
-        for number, (_, paths) in enumerate(self.groups, 1):
-            group_title = QLabel(f'<b>GROUPE {number}</b> — {len(paths)} fichiers', content)
-            groups_layout.addWidget(group_title)
+        for group in self.groups:
+            _, paths = group
+            section = QWidget(content)
+            section_layout = QVBoxLayout(section)
+            section_layout.setContentsMargins(0, 0, 0, 10)
+            group_title = QLabel(section)
+            section_layout.addWidget(group_title)
+            groups_layout.addWidget(section)
+            self.group_widgets[id(paths)] = section, group_title
             choices = {}
+            cards = {}
             for path in paths:
-                card = DuplicateCard(content)
+                card = DuplicateCard(section)
+                cards[path] = card
                 card.setCursor(Qt.CursorShape.PointingHandCursor)
                 row = QHBoxLayout(card)
                 row.setContentsMargins(8, 5, 8, 5)
@@ -253,7 +258,7 @@ class DuplicateResultsDialog(QDialog):
                 preview.setFixedSize(76, 76)
                 preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 preview.setStyleSheet('background: #303030; border: 1px solid #555;')
-                pixmap = self._preview(path)
+                pixmap, dimensions = self._preview(path)
                 if not pixmap.isNull():
                     preview.setPixmap(pixmap)
                     preview.setToolTip('Ouvrir l’image dans une nouvelle fenêtre')
@@ -268,6 +273,8 @@ class DuplicateResultsDialog(QDialog):
                     size = BrowserTabWidget._format_file_size(info.st_size)
                 except OSError:
                     modified, size = 'indisponible', 'indisponible'
+                if dimensions:
+                    size += f' · {dimensions[0]} × {dimensions[1]} px'
                 name = html.escape(Path(path).name)
                 safe_path = html.escape(str(path))
                 suffix = html.escape(Path(path).suffix.lower() or 'sans extension')
@@ -285,14 +292,21 @@ class DuplicateResultsDialog(QDialog):
                 marker = QPushButton(card)
                 marker.setFixedWidth(38)
                 row.addWidget(marker)
+                trash = QPushButton('🗑', card)
+                trash.setFixedWidth(38)
+                trash.setObjectName('trashDuplicate')
+                trash.setToolTip('Envoyer ce fichier à la corbeille')
+                trash.setAccessibleName(f'Envoyer {Path(path).name} à la corbeille')
+                trash.clicked.connect(lambda checked=False, g=group, p=path, rows=choices, widgets=cards:
+                                      self._recycle_one(g, p, rows, widgets))
+                row.insertWidget(0, trash)
                 choices[path] = (details, description, marker)
                 select = lambda p=path, group=paths, rows=choices: self._choose_keeper(group, rows, p)
                 card.clicked.connect(select)
                 marker.clicked.connect(lambda checked=False, choose=select: choose())
                 card.setStyleSheet('QWidget { background: #252525; border-radius: 5px; }')
-                groups_layout.addWidget(card)
+                section_layout.addWidget(card)
             self._choose_keeper(paths, choices, paths[0])
-            groups_layout.addSpacing(10)
         if errors:
             failures = QLabel('<b>Fichiers non comparés :</b><br>' +
                               '<br>'.join(html.escape(error) for error in errors), content)
@@ -317,19 +331,60 @@ class DuplicateResultsDialog(QDialog):
             self.delete_button.clicked.connect(self._delete)
             buttons.addWidget(self.delete_button)
         layout.addLayout(buttons)
+        self._update_summary()
 
     @staticmethod
     def _preview(path, bounds=(72, 72)):
         if not is_image_file(path):
-            return QPixmap()
+            return QPixmap(), None
         try:
             with Image.open(path) as opened:
                 image = ImageOps.exif_transpose(opened).convert('RGBA')
+                dimensions = image.size
                 image.thumbnail(bounds, Image.Resampling.LANCZOS)
-                return QPixmap.fromImage(QImage(image.tobytes(), image.width, image.height,
-                                                image.width * 4, QImage.Format.Format_RGBA8888).copy())
+                pixmap = QPixmap.fromImage(QImage(image.tobytes(), image.width, image.height,
+                                                 image.width * 4, QImage.Format.Format_RGBA8888).copy())
+                return pixmap, dimensions
         except Exception:
-            return QPixmap()
+            return QPixmap(), None
+
+    def _update_summary(self):
+        count = sum(len(paths) - 1 for _, paths in self.groups)
+        if not count:
+            summary = 'Aucun doublon restant.' if self.recycled else 'Aucun doublon trouvé.'
+        else:
+            summary = f'<b>{count} fichier(s) en double</b> dans {len(self.groups)} groupe(s).'
+            if self.resized:
+                summary += ' Images possiblement redimensionnées. Comparez les aperçus avant une mise à la corbeille.'
+            summary += ' Cliquez sur une ligne pour choisir le fichier à conserver.'
+        self.header.setText(summary)
+        if self.delete_button:
+            self.delete_button.setVisible(bool(count))
+        for number, (_, paths) in enumerate(self.groups, 1):
+            _, title = self.group_widgets[id(paths)]
+            title.setText(f'<b>GROUPE {number}</b> — {len(paths)} fichiers')
+
+    def _recycle_one(self, group, path, choices, cards):
+        digest, paths = group
+        reference = next(other for other in paths if other != path)
+        removed, failures = recycle_duplicates([(digest, [reference, path])])
+        if not removed:
+            QMessageBox.warning(self, 'Mise à la corbeille impossible', '\n'.join(failures))
+            return
+        self.recycled.extend(removed)
+        paths.remove(path)
+        choices.pop(path)
+        card = cards.pop(path)
+        card.hide()
+        card.deleteLater()
+        if len(paths) == 1:
+            self.groups.remove(group)
+            section, _ = self.group_widgets.pop(id(paths))
+            section.hide()
+            section.deleteLater()
+        else:
+            self._choose_keeper(paths, choices, paths[0])
+        self._update_summary()
 
     @staticmethod
     def _choose_keeper(paths, rows, keeper):
@@ -346,7 +401,7 @@ class DuplicateResultsDialog(QDialog):
 
     def _open_preview(self, path):
         available = self.screen().availableGeometry()
-        pixmap = self._preview(path, (int(available.width() * .85), int(available.height() * .85)))
+        pixmap, _ = self._preview(path, (int(available.width() * .85), int(available.height() * .85)))
         if pixmap.isNull():
             QMessageBox.warning(self, 'Aperçu indisponible', str(path))
             return
@@ -862,6 +917,10 @@ class BrowserTabWidget(QWidget):
         count = sum(len(paths) - 1 for _, paths in groups)
         dialog = DuplicateResultsDialog(groups, errors, count, self, resized=scan.resized)
         dialog.exec()
+        for path in dialog.recycled:
+            self.thumbnail_manager.cache.invalidate(path)
+        if dialog.recycled and not dialog.delete_requested:
+            self.refresh()
         if dialog.retry_resized:
             self._find_duplicates(resized=True, folder=scan.folder)
         elif dialog.delete_requested:

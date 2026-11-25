@@ -349,7 +349,7 @@ class MainWindow(QMainWindow):
         if any(char in query for char in '"<>|:/\\'):
             QMessageBox.information(self, 'Recherche d’images', 'Saisissez un nom de fichier, avec * ou ? si nécessaire.')
             return
-        tab = FilenameSearchTab(query, self)
+        tab = FilenameSearchTab(query, self.thumbnail_manager, self.config.get('thumbnail_size', 150), self)
         tab.creation_serial = self._next_tab_serial
         self._next_tab_serial += 1
         tab.open_image.connect(self._open_search_image)
@@ -798,6 +798,8 @@ class MainWindow(QMainWindow):
             tab = self.tab_widget.widget(i)
             if isinstance(tab, FilenameSearchTab):
                 tab.cancel()
+                if tab.size_job:
+                    tab.size_job.cancelled.set()
         self.config.set("window_width", self.width())
         self.config.set("window_height", self.height())
         self._save_tab_state()
